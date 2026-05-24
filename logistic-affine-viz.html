@@ -1,0 +1,328 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>아핀 함수와 로지스틱 회귀</title>
+<style>
+  *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+  body {
+    font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
+    background: #f8f7f4;
+    color: #2c2c2a;
+    padding: 1.5rem;
+  }
+  h1 { font-size: 17px; font-weight: 500; margin-bottom: 1.25rem; }
+
+  .layout { display: grid; grid-template-columns: 1fr 1fr; gap: 16px; }
+
+  .panel {
+    background: #fff;
+    border: 0.5px solid rgba(0,0,0,0.1);
+    border-radius: 12px;
+    padding: 14px;
+  }
+  .panel-title { font-size: 13px; color: #5f5e5a; margin-bottom: 10px; }
+
+  .controls { margin-bottom: 1.25rem; display: grid; grid-template-columns: 1fr 1fr; gap: 12px; }
+  .ctrl-card { background: #eeece6; border-radius: 8px; padding: 12px 14px; }
+  .ctrl-label {
+    font-size: 12px; color: #5f5e5a;
+    display: flex; justify-content: space-between; align-items: baseline;
+    margin-bottom: 6px;
+  }
+  .ctrl-label .name { font-weight: 500; font-size: 13px; color: #2c2c2a; }
+  .ctrl-label .val { font-size: 13px; font-weight: 500; color: #185FA5; font-variant-numeric: tabular-nums; }
+  .ctrl-desc { font-size: 11px; color: #888780; margin-top: 6px; line-height: 1.4; }
+  input[type=range] { width: 100%; accent-color: #185FA5; }
+
+  .insight {
+    margin-top: 1rem;
+    background: #eeece6;
+    border-radius: 8px;
+    padding: 12px 14px;
+    font-size: 13px; color: #5f5e5a; line-height: 1.6;
+    min-height: 48px;
+  }
+  .insight strong { color: #2c2c2a; font-weight: 500; }
+
+  canvas { display: block; width: 100% !important; }
+
+  .formula {
+    background: #eeece6;
+    border-radius: 8px;
+    padding: 10px 14px;
+    font-size: 13px;
+    color: #5f5e5a;
+    margin-bottom: 1.25rem;
+    line-height: 1.8;
+    font-family: 'Georgia', serif;
+  }
+  .formula .eq { color: #185FA5; font-weight: 500; }
+  .formula .highlight { color: #A32D2D; font-weight: 500; }
+
+  @media (max-width: 560px) {
+    .layout { grid-template-columns: 1fr; }
+    .controls { grid-template-columns: 1fr; }
+  }
+</style>
+</head>
+<body>
+
+<h1>아핀 함수가 로지스틱 회귀에 미치는 영향</h1>
+
+<div class="controls">
+  <div class="ctrl-card">
+    <div class="ctrl-label">
+      <span class="name">가중치 w</span>
+      <span class="val" id="w-val">1.0</span>
+    </div>
+    <input type="range" min="-4" max="4" step="0.1" value="1" id="w-slider">
+    <div class="ctrl-desc" id="w-desc">입력 변화에 얼마나 민감하게 반응할지 결정</div>
+  </div>
+  <div class="ctrl-card">
+    <div class="ctrl-label">
+      <span class="name">절편 b</span>
+      <span class="val" id="b-val">0.0</span>
+    </div>
+    <input type="range" min="-4" max="4" step="0.1" value="0" id="b-slider">
+    <div class="ctrl-desc" id="b-desc">결정 경계(p̂ = 0.5)의 위치를 이동</div>
+  </div>
+</div>
+
+<div class="layout">
+  <div class="panel">
+    <div class="panel-title">z = w·x + b &nbsp;(아핀 함수)</div>
+    <canvas id="affine-canvas"></canvas>
+  </div>
+  <div class="panel">
+    <div class="panel-title">p̂ = σ(w·x + b) &nbsp;(최종 예측 확률)</div>
+    <canvas id="sigmoid-canvas"></canvas>
+  </div>
+</div>
+
+<div class="insight" id="insight"></div>
+
+<script>
+let w = 1.0, b = 0.0;
+
+const sigmoid = z => 1 / (1 + Math.exp(-z));
+
+const X_MIN = -6, X_MAX = 6;
+const Z_MIN = -8, Z_MAX = 8;
+
+const BLUE   = '#185FA5';
+const BLUE_A = 'rgba(24,95,165,0.12)';
+const RED    = '#A32D2D';
+const AMBER  = 'rgba(180,100,0,0.85)';
+const GRID   = 'rgba(0,0,0,0.06)';
+const AXIS   = 'rgba(0,0,0,0.12)';
+const TEXT   = '#888780';
+
+function setupCanvas(canvas) {
+  const dpr = window.devicePixelRatio || 1;
+  const W = canvas.parentElement.clientWidth - 28;
+  const H = Math.round(W * 0.75);
+  canvas.width  = W * dpr;
+  canvas.height = H * dpr;
+  canvas.style.width  = W + 'px';
+  canvas.style.height = H + 'px';
+  const ctx = canvas.getContext('2d');
+  ctx.scale(dpr, dpr);
+  return { ctx, W, H };
+}
+
+function drawGrid(ctx, W, H, pad, toX, toY, xTicks, yTicks) {
+  ctx.strokeStyle = GRID; ctx.lineWidth = 0.5;
+  xTicks.forEach(x => {
+    const px = toX(x);
+    ctx.beginPath(); ctx.moveTo(px, pad); ctx.lineTo(px, H - pad); ctx.stroke();
+  });
+  yTicks.forEach(y => {
+    const py = toY(y);
+    ctx.beginPath(); ctx.moveTo(pad, py); ctx.lineTo(W - pad, py); ctx.stroke();
+  });
+  ctx.strokeStyle = AXIS; ctx.lineWidth = 1;
+  const ax = toX(0);
+  if (ax > pad && ax < W - pad) {
+    ctx.beginPath(); ctx.moveTo(ax, pad); ctx.lineTo(ax, H - pad); ctx.stroke();
+  }
+  const ay = toY(0);
+  if (ay > pad && ay < H - pad) {
+    ctx.beginPath(); ctx.moveTo(pad, ay); ctx.lineTo(W - pad, ay); ctx.stroke();
+  }
+}
+
+function drawAffine(canvas) {
+  const { ctx, W, H } = setupCanvas(canvas);
+  const pad = 36;
+  const toX = v => pad + (v - X_MIN) / (X_MAX - X_MIN) * (W - 2 * pad);
+  const toY = v => pad + (1 - (v - Z_MIN) / (Z_MAX - Z_MIN)) * (H - 2 * pad);
+
+  ctx.clearRect(0, 0, W, H);
+  drawGrid(ctx, W, H, pad, toX, toY, [-4,-2,0,2,4], [-6,-3,0,3,6]);
+
+  // reference: w=1, b=0 (ghost line)
+  ctx.beginPath();
+  ctx.moveTo(toX(X_MIN), toY(X_MIN));
+  ctx.lineTo(toX(X_MAX), toY(X_MAX));
+  ctx.strokeStyle = 'rgba(0,0,0,0.1)'; ctx.lineWidth = 1;
+  ctx.setLineDash([3,3]); ctx.stroke(); ctx.setLineDash([]);
+
+  // actual line z = w*x + b
+  const x1 = X_MIN, z1 = w * x1 + b;
+  const x2 = X_MAX, z2 = w * x2 + b;
+  // clamp to canvas
+  ctx.beginPath();
+  ctx.moveTo(toX(x1), toY(Math.max(Z_MIN, Math.min(Z_MAX, z1))));
+  ctx.lineTo(toX(x2), toY(Math.max(Z_MIN, Math.min(Z_MAX, z2))));
+  ctx.strokeStyle = BLUE; ctx.lineWidth = 2.5;
+  ctx.stroke();
+
+  // z=0 crossing (decision boundary in x)
+  if (w !== 0) {
+    const xBound = -b / w;
+    if (xBound >= X_MIN && xBound <= X_MAX) {
+      ctx.beginPath(); ctx.arc(toX(xBound), toY(0), 5, 0, Math.PI * 2);
+      ctx.fillStyle = AMBER; ctx.fill();
+      ctx.fillStyle = AMBER; ctx.font = '11px sans-serif'; ctx.textAlign = 'left';
+      ctx.fillText(`x = ${xBound.toFixed(1)} 에서 z=0`, toX(xBound) + 8, toY(0) - 6);
+    }
+  }
+
+  // slope annotation
+  ctx.fillStyle = BLUE; ctx.font = '11px sans-serif'; ctx.textAlign = 'left';
+  ctx.fillText(`기울기 = w = ${w.toFixed(1)}`, pad + 4, pad + 14);
+  ctx.fillStyle = TEXT;
+  ctx.fillText(`y절편 = b = ${b.toFixed(1)}`, pad + 4, pad + 28);
+
+  // axis labels
+  ctx.fillStyle = TEXT; ctx.font = '11px sans-serif'; ctx.textAlign = 'center';
+  [-4,-2,0,2,4].forEach(x => ctx.fillText(x, toX(x), H - pad + 14));
+  ctx.textAlign = 'right';
+  [-6,-3,0,3,6].forEach(y => ctx.fillText(y, pad - 4, toY(y) + 4));
+  ctx.textAlign = 'center';
+  ctx.fillText('입력 x', (pad + W - pad) / 2, H - 2);
+  ctx.save(); ctx.translate(11, (pad + H - pad) / 2); ctx.rotate(-Math.PI / 2);
+  ctx.fillText('z 값', 0, 0); ctx.restore();
+}
+
+function drawSigmoid(canvas) {
+  const { ctx, W, H } = setupCanvas(canvas);
+  const pad = 36;
+  const toX = v => pad + (v - X_MIN) / (X_MAX - X_MIN) * (W - 2 * pad);
+  const toY = v => pad + (1 - v) * (H - 2 * pad);
+
+  ctx.clearRect(0, 0, W, H);
+  drawGrid(ctx, W, H, pad, toX, toY, [-4,-2,0,2,4], []);
+  [0, 0.25, 0.5, 0.75, 1.0].forEach(p => {
+    ctx.strokeStyle = GRID; ctx.lineWidth = 0.5;
+    ctx.beginPath(); ctx.moveTo(pad, toY(p)); ctx.lineTo(W - pad, toY(p)); ctx.stroke();
+  });
+
+  // reference sigmoid (w=1, b=0) ghost
+  ctx.beginPath();
+  for (let i = 0; i <= 300; i++) {
+    const x = X_MIN + (X_MAX - X_MIN) * i / 300;
+    const p = sigmoid(x);
+    if (i === 0) ctx.moveTo(toX(x), toY(p));
+    else ctx.lineTo(toX(x), toY(p));
+  }
+  ctx.strokeStyle = 'rgba(0,0,0,0.1)'; ctx.lineWidth = 1;
+  ctx.setLineDash([3,3]); ctx.stroke(); ctx.setLineDash([]);
+
+  // filled area
+  ctx.beginPath();
+  let first = true;
+  for (let i = 0; i <= 300; i++) {
+    const x = X_MIN + (X_MAX - X_MIN) * i / 300;
+    const p = sigmoid(w * x + b);
+    if (first) { ctx.moveTo(toX(x), toY(p)); first = false; }
+    else ctx.lineTo(toX(x), toY(p));
+  }
+  ctx.lineTo(toX(X_MAX), toY(0));
+  ctx.lineTo(toX(X_MIN), toY(0));
+  ctx.closePath();
+  ctx.fillStyle = BLUE_A; ctx.fill();
+
+  // actual sigmoid curve
+  ctx.beginPath(); first = true;
+  for (let i = 0; i <= 300; i++) {
+    const x = X_MIN + (X_MAX - X_MIN) * i / 300;
+    const p = sigmoid(w * x + b);
+    if (first) { ctx.moveTo(toX(x), toY(p)); first = false; }
+    else ctx.lineTo(toX(x), toY(p));
+  }
+  ctx.strokeStyle = BLUE; ctx.lineWidth = 2.5; ctx.stroke();
+
+  // threshold line
+  ctx.setLineDash([4, 3]);
+  ctx.strokeStyle = AMBER; ctx.lineWidth = 1.5;
+  ctx.beginPath(); ctx.moveTo(pad, toY(0.5)); ctx.lineTo(W - pad, toY(0.5)); ctx.stroke();
+  ctx.setLineDash([]);
+
+  // decision boundary dot
+  if (w !== 0) {
+    const xBound = -b / w;
+    if (xBound >= X_MIN && xBound <= X_MAX) {
+      ctx.beginPath(); ctx.arc(toX(xBound), toY(0.5), 5, 0, Math.PI * 2);
+      ctx.fillStyle = AMBER; ctx.fill();
+      ctx.fillStyle = AMBER; ctx.font = '11px sans-serif'; ctx.textAlign = 'left';
+      ctx.fillText(`결정 경계 x = ${xBound.toFixed(1)}`, toX(xBound) + 8, toY(0.5) - 6);
+    }
+  }
+
+  // slope annotation
+  const steepness = Math.abs(w) > 2.5 ? '급격' : Math.abs(w) > 0.8 ? '보통' : '완만';
+  ctx.fillStyle = BLUE; ctx.font = '11px sans-serif'; ctx.textAlign = 'left';
+  ctx.fillText(`|w| = ${Math.abs(w).toFixed(1)} → ${steepness}하게 변화`, pad + 4, pad + 14);
+
+  // axis labels
+  ctx.fillStyle = TEXT; ctx.font = '11px sans-serif'; ctx.textAlign = 'center';
+  [-4,-2,0,2,4].forEach(x => ctx.fillText(x, toX(x), H - pad + 14));
+  ctx.textAlign = 'left';
+  [0, 0.25, 0.5, 0.75, 1.0].forEach(p => ctx.fillText(p.toFixed(2), pad + 3, toY(p) - 4));
+  ctx.textAlign = 'center';
+  ctx.fillText('입력 x', (pad + W - pad) / 2, H - 2);
+  ctx.save(); ctx.translate(11, (pad + H - pad) / 2); ctx.rotate(-Math.PI / 2);
+  ctx.fillText('예측 확률 p̂', 0, 0); ctx.restore();
+}
+
+function getInsight(w, b) {
+  const xBound = w !== 0 ? (-b / w).toFixed(2) : '∞';
+  let wMsg = '';
+  if (Math.abs(w) > 2.5) wMsg = `<strong>|w| = ${Math.abs(w).toFixed(1)}</strong> — 입력이 조금만 변해도 확률이 급격하게 바뀜. 경계 근처에서 모델이 매우 확신함.`;
+  else if (Math.abs(w) > 0.8) wMsg = `<strong>|w| = ${Math.abs(w).toFixed(1)}</strong> — 보통 속도로 확률이 변함.`;
+  else wMsg = `<strong>|w| = ${Math.abs(w).toFixed(1)}</strong> — 입력이 크게 변해도 확률이 완만하게 바뀜. 모델이 확신하지 못하는 상태.`;
+
+  if (w < 0) wMsg += ' <strong>w &lt; 0</strong>이므로 x가 커질수록 확률이 낮아짐.';
+
+  const bMsg = b === 0
+    ? `<strong>b = 0</strong> — 결정 경계가 x = 0에 위치함.`
+    : `<strong>b = ${b.toFixed(1)}</strong> — z값 전체를 ${b > 0 ? '올려서' : '내려서'} 결정 경계가 x = ${xBound}으로 ${b > 0 ? '왼쪽' : '오른쪽'}으로 이동함.`;
+
+  return wMsg + '<br>' + bMsg;
+}
+
+function update() {
+  drawAffine(document.getElementById('affine-canvas'));
+  drawSigmoid(document.getElementById('sigmoid-canvas'));
+  document.getElementById('insight').innerHTML = getInsight(w, b);
+}
+
+document.getElementById('w-slider').addEventListener('input', e => {
+  w = parseFloat(e.target.value);
+  document.getElementById('w-val').textContent = w.toFixed(1);
+  update();
+});
+document.getElementById('b-slider').addEventListener('input', e => {
+  b = parseFloat(e.target.value);
+  document.getElementById('b-val').textContent = b.toFixed(1);
+  update();
+});
+
+update();
+window.addEventListener('resize', update);
+</script>
+</body>
+</html>
