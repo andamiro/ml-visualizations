@@ -273,7 +273,7 @@ function drawSigmoid(canvas) {
   }
 
   // slope annotation
-  const steepness = Math.abs(w) > 2.5 ? '급격' : Math.abs(w) > 0.8 ? '보통' : '완만';
+  const steepness = Math.abs(w) > 2.5 ? '급격' : Math.abs(w) > 0.8 ? '적절' : '완만';
   ctx.fillStyle = BLUE; ctx.font = '11px sans-serif'; ctx.textAlign = 'left';
   ctx.fillText(`|w| = ${Math.abs(w).toFixed(1)} → ${steepness}하게 변화`, pad + 4, pad + 14);
 
