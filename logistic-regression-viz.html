@@ -86,10 +86,10 @@
 
 <script>
 const presets = {
-  'well-separated': { sep: 3.0, noise: 0.8, label: '잘 분리된 데이터일수록 시그모이드 곡선이 가파르고(급격히 0→1), 결정 경계가 명확합니다.' },
-  'overlapping':    { sep: 1.2, noise: 1.5, label: '클래스가 많이 겹칠수록 시그모이드 곡선이 완만해지고, 경계 근처에서 모델의 확신도가 낮아집니다.' },
-  'imbalanced':     { sep: 2.5, noise: 1.0, label: '한 클래스에 데이터가 몰리면 결정 경계가 소수 클래스 쪽으로 치우쳐 이동합니다.' },
-  'nonlinear':      { sep: 2.0, noise: 0.7, label: '실제로 비선형 경계를 가진 데이터에 로지스틱 회귀를 쓰면 선형 경계로 근사하므로 오분류가 발생합니다.' }
+  'well-separated': { sep: 3.0, noise: 0.8, label: '잘 분리된 데이터일수록 시그모이드 곡선이 가파르고(급격히 0→1), 결정 경계가 명확함.' },
+  'overlapping':    { sep: 1.2, noise: 1.5, label: '클래스가 많이 겹칠수록 시그모이드 곡선이 완만해지고, 경계 근처에서 모델의 확신도가 낮아짐.' },
+  'imbalanced':     { sep: 2.5, noise: 1.0, label: '한 클래스에 데이터가 몰리면 결정 경계가 소수 클래스 쪽으로 치우쳐 이동함.' },
+  'nonlinear':      { sep: 2.0, noise: 0.7, label: '실제로 비선형 경계를 가진 데이터에 로지스틱 회귀를 쓰면 선형 경계로 근사하므로 오분류가 발생함.' }
 };
 
 let currentPreset = 'well-separated';
@@ -308,7 +308,7 @@ function update() {
   drawScatter(document.getElementById('scatter'), pts, model, currentPreset);
   drawSigmoid(document.getElementById('sigmoid'), model);
   document.getElementById('insight-text').innerHTML =
-    `<strong>현재 상태:</strong> ${currentPreset ? presets[currentPreset].label : '슬라이더를 조절해 데이터 분포를 바꿔보세요.'}`;
+    `<strong>현재 상태:</strong> ${currentPreset ? presets[currentPreset].label : '슬라이더를 조절해 데이터 분포를 바꿔볼 것.'}`;
 }
 
 document.getElementById('sep-slider').addEventListener('input', e => {
