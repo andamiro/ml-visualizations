@@ -48,19 +48,6 @@
 
   canvas { display: block; width: 100% !important; }
 
-  .formula {
-    background: #eeece6;
-    border-radius: 8px;
-    padding: 10px 14px;
-    font-size: 13px;
-    color: #5f5e5a;
-    margin-bottom: 1.25rem;
-    line-height: 1.8;
-    font-family: 'Georgia', serif;
-  }
-  .formula .eq { color: #185FA5; font-weight: 500; }
-  .formula .highlight { color: #A32D2D; font-weight: 500; }
-
   @media (max-width: 560px) {
     .layout { grid-template-columns: 1fr; }
     .controls { grid-template-columns: 1fr; }
@@ -78,7 +65,7 @@
       <span class="val" id="w-val">1.0</span>
     </div>
     <input type="range" min="-4" max="4" step="0.1" value="1" id="w-slider">
-    <div class="ctrl-desc" id="w-desc">입력 변화에 얼마나 민감하게 반응할지 결정</div>
+    <div class="ctrl-desc">입력 변화에 얼마나 민감하게 반응할지 결정</div>
   </div>
   <div class="ctrl-card">
     <div class="ctrl-label">
@@ -86,7 +73,7 @@
       <span class="val" id="b-val">0.0</span>
     </div>
     <input type="range" min="-4" max="4" step="0.1" value="0" id="b-slider">
-    <div class="ctrl-desc" id="b-desc">결정 경계(p̂ = 0.5)의 위치를 이동</div>
+    <div class="ctrl-desc">결정 경계(p̂ = 0.5)의 위치를 이동</div>
   </div>
 </div>
 
@@ -113,7 +100,6 @@ const Z_MIN = -8, Z_MAX = 8;
 
 const BLUE   = '#185FA5';
 const BLUE_A = 'rgba(24,95,165,0.12)';
-const RED    = '#A32D2D';
 const AMBER  = 'rgba(180,100,0,0.85)';
 const GRID   = 'rgba(0,0,0,0.06)';
 const AXIS   = 'rgba(0,0,0,0.12)';
@@ -164,18 +150,25 @@ function drawAffine(canvas) {
 
   // reference: w=1, b=0 (ghost line)
   ctx.beginPath();
-  ctx.moveTo(toX(X_MIN), toY(X_MIN));
-  ctx.lineTo(toX(X_MAX), toY(X_MAX));
+  ctx.moveTo(toX(X_MIN), toY(Math.max(Z_MIN, Math.min(Z_MAX, X_MIN))));
+  ctx.lineTo(toX(X_MAX), toY(Math.max(Z_MIN, Math.min(Z_MAX, X_MAX))));
   ctx.strokeStyle = 'rgba(0,0,0,0.1)'; ctx.lineWidth = 1;
   ctx.setLineDash([3,3]); ctx.stroke(); ctx.setLineDash([]);
 
   // actual line z = w*x + b
-  const x1 = X_MIN, z1 = w * x1 + b;
-  const x2 = X_MAX, z2 = w * x2 + b;
-  // clamp to canvas
+  // x 범위를 z가 [Z_MIN, Z_MAX] 안에 들도록 역으로 clamp → 점이 반드시 직선 위에 위치
+  let lx1 = X_MIN, lx2 = X_MAX;
+  if (w !== 0) {
+    const xAtZMin = (Z_MIN - b) / w;
+    const xAtZMax = (Z_MAX - b) / w;
+    const xLo = Math.min(xAtZMin, xAtZMax);
+    const xHi = Math.max(xAtZMin, xAtZMax);
+    lx1 = Math.max(X_MIN, xLo);
+    lx2 = Math.min(X_MAX, xHi);
+  }
   ctx.beginPath();
-  ctx.moveTo(toX(x1), toY(Math.max(Z_MIN, Math.min(Z_MAX, z1))));
-  ctx.lineTo(toX(x2), toY(Math.max(Z_MIN, Math.min(Z_MAX, z2))));
+  ctx.moveTo(toX(lx1), toY(w * lx1 + b));
+  ctx.lineTo(toX(lx2), toY(w * lx2 + b));
   ctx.strokeStyle = BLUE; ctx.lineWidth = 2.5;
   ctx.stroke();
 
