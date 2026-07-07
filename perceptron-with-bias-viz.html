@@ -152,7 +152,7 @@ function drawAxes(ctx, W, H, pad, toX, toY) {
   ctx.textAlign = 'right';
   [0,2,4,6,8,10].forEach(y => ctx.fillText(y, pad-5, toY(y)+4));
   ctx.textAlign = 'center';
-  ctx.fillText('x₁ (광고성 단어)', (pad+W-pad)/2, H-2);
+  ctx.fillText('x₁ (광고성 단어 개수)', (pad+W-pad)/2, H-2);
   ctx.save(); ctx.translate(11, (pad+H-pad)/2); ctx.rotate(-Math.PI/2);
   ctx.fillText('x₂ (링크 개수)', 0, 0); ctx.restore();
 }
