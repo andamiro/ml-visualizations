@@ -3,7 +3,7 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>퍼셉트론 결정 경계 시뮬레이터</title>
+<title>편향 포함 퍼셉트론 시뮬레이터</title>
 <style>
 
   *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
@@ -52,12 +52,12 @@
     .controls { grid-template-columns: 1fr; }
   }
 
-.controls { grid-template-columns: 1fr 1fr; }
+.controls { grid-template-columns: 1fr 1fr 1fr; }
 </style>
 </head>
 <body>
 
-<h1>결정 경계 시뮬레이터 — 편향 없는 퍼셉트론의 한계</h1>
+<h1>결정 경계 시뮬레이터 — 편향을 추가한 퍼셉트론</h1>
 
 <div class="controls">
   <div class="ctrl-card">
@@ -75,6 +75,14 @@
     </div>
     <input type="range" min="-2" max="2" step="0.01" value="-1.0" id="w2-slider">
     <div class="ctrl-desc">링크 개수에 대한 민감도 — 결정 경계의 기울기를 결정</div>
+  </div>
+  <div class="ctrl-card">
+    <div class="ctrl-label">
+      <span class="name">편향 b</span>
+      <span class="val" id="b-val">0.00</span>
+    </div>
+    <input type="range" min="-20" max="20" step="0.1" value="0" id="b-slider">
+    <div class="ctrl-desc">결정 경계를 원점에서 벗어나 평행이동 — 핵심 차이</div>
   </div>
 </div>
 
@@ -150,23 +158,21 @@ function drawAxes(ctx, W, H, pad, toX, toY) {
 }
 
 
-let w1 = 0.5, w2 = -1.0;
+let w1 = 0.5, w2 = -1.0, b = 0.0;
 
-function z(x, y) { return w1*x + w2*y; }
+function z(x, y) { return w1*x + w2*y + b; }
 
 function drawBoundary(ctx, W, H, pad, toX, toY) {
   if(Math.abs(w2) < 0.01) return;
   ctx.strokeStyle = BLUE; ctx.lineWidth = 2.5;
   ctx.beginPath();
   let first = true;
-  for(let xi = 0; xi <= XM; xi += 0.2) {
-    const yi = -w1/w2 * xi;
+  for(let xi = -1; xi <= XM+1; xi += 0.2) {
+    const yi = -(w1*xi + b) / w2;
     const cx = toX(xi), cy = toY(yi);
     if(first) { ctx.moveTo(cx, cy); first = false; } else ctx.lineTo(cx, cy);
   }
   ctx.stroke();
-  ctx.beginPath(); ctx.arc(toX(0), toY(0), 4.5, 0, Math.PI*2);
-  ctx.fillStyle = BLUE; ctx.fill();
 }
 
 function drawHeatmap(canvas) {
@@ -235,10 +241,12 @@ function calcStats() {
 
 function getInsight() {
   const { correct, wrong, acc } = calcStats();
-  const eq = Math.abs(w2)>0.01 ? `${w1.toFixed(2)}·x₁ + (${w2.toFixed(2)})·x₂ = 0` : `${w1.toFixed(2)}·x₁ = 0`;
+  const eq = `${w1.toFixed(2)}·x₁ + (${w2.toFixed(2)})·x₂ + (${b.toFixed(2)}) = 0`;
   if(wrong === 0)
     return `<strong>정확도 ${acc}% (${correct}/${DATA.length})</strong> — 모든 샘플을 올바르게 분류합니다. &nbsp;<span style="color:#888780">결정 경계: ${eq}</span>`;
-  return `<strong>정확도 ${acc}% (${correct}/${DATA.length})</strong> — 오분류 <strong style="color:#A32D2D">${wrong}개</strong>. 결정 경계가 항상 원점을 지나야 하므로, w₁·w₂를 어떻게 조정해도 최적 위치로 이동할 수 없습니다. &nbsp;<span style="color:#888780">결정 경계: ${eq}</span>`;
+  const bNote = Math.abs(b) < 0.05
+    ? ` &nbsp;<span style="color:#185FA5">편향 b를 조정하면 경계를 이동할 수 있습니다.</span>` : '';
+  return `<strong>정확도 ${acc}% (${correct}/${DATA.length})</strong> — 오분류 <strong style="color:#A32D2D">${wrong}개</strong>.${bNote} &nbsp;<span style="color:#888780">결정 경계: ${eq}</span>`;
 }
 
 function update() {
@@ -248,14 +256,13 @@ function update() {
 }
 
 document.getElementById('w1-slider').addEventListener('input', e => {
-  w1 = parseFloat(e.target.value);
-  document.getElementById('w1-val').textContent = w1.toFixed(2);
-  update();
+  w1 = parseFloat(e.target.value); document.getElementById('w1-val').textContent = w1.toFixed(2); update();
 });
 document.getElementById('w2-slider').addEventListener('input', e => {
-  w2 = parseFloat(e.target.value);
-  document.getElementById('w2-val').textContent = w2.toFixed(2);
-  update();
+  w2 = parseFloat(e.target.value); document.getElementById('w2-val').textContent = w2.toFixed(2); update();
+});
+document.getElementById('b-slider').addEventListener('input', e => {
+  b = parseFloat(e.target.value); document.getElementById('b-val').textContent = b.toFixed(2); update();
 });
 
 update();
