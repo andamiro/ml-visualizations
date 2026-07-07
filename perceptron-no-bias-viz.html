@@ -1,0 +1,271 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>퍼셉트론 결정 경계 시뮬레이터</title>
+<style>
+  *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+  body {
+    font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
+    background: #f8f7f4;
+    color: #2c2c2a;
+    padding: 1.5rem;
+  }
+  h1 { font-size: 17px; font-weight: 500; margin-bottom: 1.25rem; }
+  .controls {
+    margin-bottom: 1.25rem;
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 12px;
+  }
+  .ctrl-card { background: #eeece6; border-radius: 8px; padding: 12px 14px; }
+  .ctrl-label {
+    font-size: 12px; color: #5f5e5a;
+    display: flex; justify-content: space-between; align-items: baseline;
+    margin-bottom: 6px;
+  }
+  .ctrl-label .name { font-weight: 500; font-size: 13px; color: #2c2c2a; }
+  .ctrl-label .val  { font-size: 13px; font-weight: 500; color: #185FA5; font-variant-numeric: tabular-nums; }
+  .ctrl-desc { font-size: 11px; color: #888780; margin-top: 6px; line-height: 1.4; }
+  input[type=range] { width: 100%; accent-color: #185FA5; }
+  .layout { display: grid; grid-template-columns: 1fr 1fr; gap: 16px; }
+  .panel {
+    background: #fff;
+    border: 0.5px solid rgba(0,0,0,0.1);
+    border-radius: 12px;
+    padding: 14px;
+  }
+  .panel-title { font-size: 13px; color: #5f5e5a; margin-bottom: 10px; }
+  canvas { display: block; width: 100% !important; }
+  .insight {
+    margin-top: 1rem;
+    background: #eeece6;
+    border-radius: 8px;
+    padding: 12px 14px;
+    font-size: 13px; color: #5f5e5a; line-height: 1.6;
+    min-height: 48px;
+  }
+  .insight strong { color: #2c2c2a; font-weight: 500; }
+  @media (max-width: 560px) {
+    .layout { grid-template-columns: 1fr; }
+    .controls { grid-template-columns: 1fr; }
+  }
+</style>
+</head>
+<body>
+
+<h1>결정 경계 시뮬레이터 — 편향 없는 퍼셉트론의 한계</h1>
+
+<div class="controls">
+  <div class="ctrl-card">
+    <div class="ctrl-label">
+      <span class="name">가중치 w₁</span>
+      <span class="val" id="w1-val">0.50</span>
+    </div>
+    <input type="range" min="-2" max="2" step="0.01" value="0.5" id="w1-slider">
+    <div class="ctrl-desc">광고성 단어 수에 대한 민감도 — 결정 경계의 기울기를 결정</div>
+  </div>
+  <div class="ctrl-card">
+    <div class="ctrl-label">
+      <span class="name">가중치 w₂</span>
+      <span class="val" id="w2-val">-1.00</span>
+    </div>
+    <input type="range" min="-2" max="2" step="0.01" value="-1.0" id="w2-slider">
+    <div class="ctrl-desc">링크 개수에 대한 민감도 — 결정 경계의 기울기를 결정</div>
+  </div>
+</div>
+
+<div class="layout">
+  <div class="panel">
+    <div class="panel-title">가중합 분포</div>
+    <canvas id="cv-heat"></canvas>
+  </div>
+  <div class="panel">
+    <div class="panel-title">분류 결과</div>
+    <canvas id="cv-scatter"></canvas>
+  </div>
+</div>
+
+<div class="insight" id="insight"></div>
+
+<script>
+const DATA = [
+  [0,1,0],[0.5,0,0],[1,0,0],[2,1,0],[3,0,0],[3,2,0],
+  [4,1,0],[5,2,0],[1,3,0],[2,2,0],
+  [8,5,1],[10,7,1],[12,6,1],[13,5,1],[14,8,1],[15,7,1],
+  [16,4,1],[17,9,1],[11,3,1],[19,6,1],
+];
+
+let w1 = 0.5, w2 = -1.0;
+
+const BLUE  = '#185FA5';
+const GREEN = '#1a7a4a';
+const RED   = '#A32D2D';
+const GRID  = 'rgba(0,0,0,0.06)';
+const AXIS  = 'rgba(0,0,0,0.15)';
+const TEXT  = '#888780';
+const XM = 21, YM = 11;
+
+function setupCanvas(canvas) {
+  const dpr = window.devicePixelRatio || 1;
+  const W = canvas.parentElement.clientWidth - 28;
+  const H = Math.round(W * 0.78);
+  canvas.width  = W * dpr;
+  canvas.height = H * dpr;
+  canvas.style.width  = W + 'px';
+  canvas.style.height = H + 'px';
+  const ctx = canvas.getContext('2d');
+  ctx.scale(dpr, dpr);
+  return { ctx, W, H };
+}
+
+function drawAxes(ctx, W, H, pad, toX, toY) {
+  ctx.strokeStyle = GRID; ctx.lineWidth = 0.5;
+  [0,5,10,15,20].forEach(x => {
+    ctx.beginPath(); ctx.moveTo(toX(x), pad); ctx.lineTo(toX(x), H-pad); ctx.stroke();
+  });
+  [0,2,4,6,8,10].forEach(y => {
+    ctx.beginPath(); ctx.moveTo(pad, toY(y)); ctx.lineTo(W-pad, toY(y)); ctx.stroke();
+  });
+  ctx.strokeStyle = AXIS; ctx.lineWidth = 1;
+  ctx.beginPath(); ctx.moveTo(pad, H-pad); ctx.lineTo(W-pad, H-pad); ctx.stroke();
+  ctx.beginPath(); ctx.moveTo(pad, pad); ctx.lineTo(pad, H-pad); ctx.stroke();
+
+  ctx.fillStyle = TEXT; ctx.font = '11px -apple-system,sans-serif'; ctx.textAlign = 'center';
+  [0,5,10,15,20].forEach(x => ctx.fillText(x, toX(x), H-pad+14));
+  ctx.textAlign = 'right';
+  [0,2,4,6,8,10].forEach(y => ctx.fillText(y, pad-5, toY(y)+4));
+  ctx.textAlign = 'center';
+  ctx.fillText('x₁ (광고성 단어)', (pad+W-pad)/2, H-2);
+  ctx.save(); ctx.translate(11, (pad+H-pad)/2); ctx.rotate(-Math.PI/2);
+  ctx.fillText('x₂ (링크 개수)', 0, 0); ctx.restore();
+}
+
+function drawBoundary(ctx, W, H, pad, toX, toY) {
+  ctx.strokeStyle = BLUE; ctx.lineWidth = 2.5;
+  ctx.beginPath();
+  let first = true;
+  for(let xi = 0; xi <= XM; xi += 0.2) {
+    if(Math.abs(w2) < 0.01) continue;
+    const yi = -w1/w2 * xi;
+    const cx = toX(xi), cy = toY(yi);
+    if(first) { ctx.moveTo(cx, cy); first = false; } else ctx.lineTo(cx, cy);
+  }
+  ctx.stroke();
+  ctx.beginPath(); ctx.arc(toX(0), toY(0), 4.5, 0, Math.PI*2);
+  ctx.fillStyle = BLUE; ctx.fill();
+}
+
+function drawHeatmap(canvas) {
+  const { ctx, W, H } = setupCanvas(canvas);
+  const pad = 36;
+  const toX = v => pad + (v/XM)*(W-2*pad);
+  const toY = v => H-pad - (v/YM)*(H-2*pad);
+
+  ctx.clearRect(0,0,W,H);
+
+  const id = ctx.createImageData(W-2*pad, H-2*pad);
+  for(let px = 0; px < W-2*pad; px++) {
+    for(let py = 0; py < H-2*pad; py++) {
+      const x = px/(W-2*pad)*XM;
+      const y = (1 - py/(H-2*pad))*YM;
+      const z = w1*x + w2*y;
+      const i = (py*(W-2*pad)+px)*4;
+      if(z >= 0) {
+        id.data[i]=24; id.data[i+1]=95; id.data[i+2]=165; id.data[i+3]=50;
+      } else {
+        id.data[i]=180; id.data[i+1]=180; id.data[i+2]=175; id.data[i+3]=50;
+      }
+    }
+  }
+  ctx.putImageData(id, pad, pad);
+
+  drawAxes(ctx, W, H, pad, toX, toY);
+  drawBoundary(ctx, W, H, pad, toX, toY);
+
+  ctx.fillStyle = 'rgba(24,95,165,0.75)'; ctx.font = '11px sans-serif'; ctx.textAlign = 'left';
+  ctx.fillText('파란 영역: z ≥ 0 (양성)', pad+6, pad+16);
+  ctx.fillStyle = 'rgba(100,100,95,0.7)';
+  ctx.fillText('회색 영역: z < 0 (음성)', pad+6, pad+30);
+}
+
+function drawScatter(canvas) {
+  const { ctx, W, H } = setupCanvas(canvas);
+  const pad = 36;
+  const toX = v => pad + (v/XM)*(W-2*pad);
+  const toY = v => H-pad - (v/YM)*(H-2*pad);
+
+  ctx.clearRect(0,0,W,H);
+
+  // Region tint
+  const id = ctx.createImageData(W, H);
+  for(let px = 0; px < W; px++) {
+    for(let py = 0; py < H; py++) {
+      const x = (px-pad)/(W-2*pad)*XM;
+      const y = (H-pad-py)/(H-2*pad)*YM;
+      const z = w1*x + w2*y;
+      const i = (py*W+px)*4;
+      if(z >= 0) { id.data[i]=24;  id.data[i+1]=95;  id.data[i+2]=165; id.data[i+3]=22; }
+      else        { id.data[i]=163; id.data[i+1]=45;  id.data[i+2]=45;  id.data[i+3]=18; }
+    }
+  }
+  ctx.putImageData(id, 0, 0);
+
+  drawAxes(ctx, W, H, pad, toX, toY);
+  drawBoundary(ctx, W, H, pad, toX, toY);
+
+  DATA.forEach(([x, y, label]) => {
+    const z = w1*x + w2*y;
+    const pred = z >= 0 ? 1 : 0;
+    const ok = pred === label;
+    const cx = toX(x), cy = toY(y);
+    if(!ok) {
+      ctx.beginPath(); ctx.arc(cx, cy, 11, 0, Math.PI*2);
+      ctx.fillStyle = 'rgba(180,100,0,0.13)'; ctx.fill();
+    }
+    ctx.beginPath(); ctx.arc(cx, cy, 6.5, 0, Math.PI*2);
+    ctx.fillStyle   = label === 0 ? 'rgba(26,122,74,0.55)' : 'rgba(24,95,165,0.55)';
+    ctx.strokeStyle = ok ? (label === 0 ? GREEN : BLUE) : RED;
+    ctx.lineWidth = 2; ctx.fill(); ctx.stroke();
+  });
+}
+
+function calcStats() {
+  let correct = 0;
+  DATA.forEach(([x,y,label]) => { if((w1*x+w2*y>=0?1:0)===label) correct++; });
+  return { correct, wrong: DATA.length-correct, acc: Math.round(correct/DATA.length*100) };
+}
+
+function getInsight() {
+  const { correct, wrong, acc } = calcStats();
+  const eq = Math.abs(w2)>0.01
+    ? `${w1.toFixed(2)}·x₁ + (${w2.toFixed(2)})·x₂ = 0`
+    : `${w1.toFixed(2)}·x₁ = 0`;
+  if(wrong === 0)
+    return `<strong>정확도 ${acc}% (${correct}/${DATA.length})</strong> — 모든 샘플을 올바르게 분류합니다. &nbsp;<span style="color:#888780">결정 경계: ${eq}</span>`;
+  return `<strong>정확도 ${acc}% (${correct}/${DATA.length})</strong> — 오분류 <strong style="color:#A32D2D">${wrong}개</strong>. 결정 경계가 항상 원점을 지나야 하므로, w₁·w₂를 어떻게 조정해도 최적 위치로 이동할 수 없습니다. &nbsp;<span style="color:#888780">결정 경계: ${eq}</span>`;
+}
+
+function update() {
+  drawHeatmap(document.getElementById('cv-heat'));
+  drawScatter(document.getElementById('cv-scatter'));
+  document.getElementById('insight').innerHTML = getInsight();
+}
+
+document.getElementById('w1-slider').addEventListener('input', e => {
+  w1 = parseFloat(e.target.value);
+  document.getElementById('w1-val').textContent = w1.toFixed(2);
+  update();
+});
+document.getElementById('w2-slider').addEventListener('input', e => {
+  w2 = parseFloat(e.target.value);
+  document.getElementById('w2-val').textContent = w2.toFixed(2);
+  update();
+});
+
+update();
+window.addEventListener('resize', update);
+</script>
+</body>
+</html>
