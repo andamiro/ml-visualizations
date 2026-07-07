@@ -4,6 +4,7 @@
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <title>퍼셉트론 결정 경계 시뮬레이터</title>
+
 <style>
   *, *::before, *::after {
     box-sizing: border-box;
@@ -122,6 +123,7 @@
   }
 </style>
 </head>
+
 <body>
 
 <h1>결정 경계 시뮬레이터 — 편향 없는 퍼셉트론의 한계</h1>
@@ -180,6 +182,7 @@ const YM = 11;
 
 const POS_BG = [24, 95, 165, 30];
 const NEG_BG = [163, 45, 45, 22];
+
 const POS_HM = [24, 95, 165, 55];
 const NEG_HM = [163, 45, 45, 40];
 
@@ -199,7 +202,7 @@ function setupCanvas(canvas) {
 
   const ctx = canvas.getContext('2d');
 
-  // resize나 재렌더링 시 transform이 누적되지 않도록 setTransform 사용
+  // transform 누적 방지
   ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
 
   return { ctx, W, H, dpr };
@@ -265,24 +268,35 @@ function drawAxes(ctx, W, H, pad, toX, toY) {
 }
 
 function drawBoundary(ctx, W, H, pad, toX, toY) {
-  if (Math.abs(w2) < 0.01) return;
+  ctx.save();
+
+  // 결정 경계선이 좌표평면 밖으로 튀어나가지 않도록 clip
+  ctx.beginPath();
+  ctx.rect(pad, pad, W - 2 * pad, H - 2 * pad);
+  ctx.clip();
 
   ctx.strokeStyle = BLUE;
   ctx.lineWidth = 2.5;
   ctx.beginPath();
 
-  let first = true;
+  if (Math.abs(w2) < 0.01) {
+    // w₂가 0에 가까우면 결정 경계는 세로선 x = 0에 가까움
+    ctx.moveTo(toX(0), toY(0));
+    ctx.lineTo(toX(0), toY(YM));
+  } else {
+    let first = true;
 
-  for (let xi = 0; xi <= XM; xi += 0.2) {
-    const yi = -w1 / w2 * xi;
-    const cx = toX(xi);
-    const cy = toY(yi);
+    for (let xi = 0; xi <= XM; xi += 0.2) {
+      const yi = -w1 / w2 * xi;
+      const cx = toX(xi);
+      const cy = toY(yi);
 
-    if (first) {
-      ctx.moveTo(cx, cy);
-      first = false;
-    } else {
-      ctx.lineTo(cx, cy);
+      if (first) {
+        ctx.moveTo(cx, cy);
+        first = false;
+      } else {
+        ctx.lineTo(cx, cy);
+      }
     }
   }
 
@@ -292,6 +306,8 @@ function drawBoundary(ctx, W, H, pad, toX, toY) {
   ctx.arc(toX(0), toY(0), 4.5, 0, Math.PI * 2);
   ctx.fillStyle = BLUE;
   ctx.fill();
+
+  ctx.restore();
 }
 
 function drawHeatmap(canvas) {
@@ -303,6 +319,7 @@ function drawHeatmap(canvas) {
 
   ctx.clearRect(0, 0, W, H);
 
+  // 좌표평면 내부만 칠함
   const iw = Math.round((W - 2 * pad) * dpr);
   const ih = Math.round((H - 2 * pad) * dpr);
 
@@ -323,8 +340,7 @@ function drawHeatmap(canvas) {
     }
   }
 
-  // putImageData는 ctx.scale / setTransform의 영향을 받지 않음
-  // 따라서 실제 캔버스 픽셀 좌표인 dpr 기준으로 넣어야 함
+  // putImageData는 setTransform / scale의 영향을 받지 않으므로 dpr 기준 좌표 사용
   ctx.putImageData(id, Math.round(pad * dpr), Math.round(pad * dpr));
 
   drawAxes(ctx, W, H, pad, toX, toY);
@@ -349,21 +365,19 @@ function drawScatter(canvas) {
 
   ctx.clearRect(0, 0, W, H);
 
-  const bw = Math.round(W * dpr);
-  const bh = Math.round(H * dpr);
+  // 분류 결과 배경도 가중합 분포처럼 좌표평면 내부만 칠함
+  const iw = Math.round((W - 2 * pad) * dpr);
+  const ih = Math.round((H - 2 * pad) * dpr);
 
-  const id = ctx.createImageData(bw, bh);
+  const id = ctx.createImageData(iw, ih);
 
-  for (let px = 0; px < bw; px++) {
-    for (let py = 0; py < bh; py++) {
-      const cssX = px / dpr;
-      const cssY = py / dpr;
-
-      const x = (cssX - pad) / (W - 2 * pad) * XM;
-      const y = (H - pad - cssY) / (H - 2 * pad) * YM;
+  for (let px = 0; px < iw; px++) {
+    for (let py = 0; py < ih; py++) {
+      const x = px / iw * XM;
+      const y = (1 - py / ih) * YM;
 
       const col = z(x, y) >= 0 ? POS_BG : NEG_BG;
-      const i = (py * bw + px) * 4;
+      const i = (py * iw + px) * 4;
 
       id.data[i] = col[0];
       id.data[i + 1] = col[1];
@@ -372,8 +386,8 @@ function drawScatter(canvas) {
     }
   }
 
-  // 전체 배경도 실제 캔버스 픽셀 크기 기준으로 그림
-  ctx.putImageData(id, 0, 0);
+  // dpr 기준으로 좌표평면 내부 위치에 배경 삽입
+  ctx.putImageData(id, Math.round(pad * dpr), Math.round(pad * dpr));
 
   drawAxes(ctx, W, H, pad, toX, toY);
   drawBoundary(ctx, W, H, pad, toX, toY);
