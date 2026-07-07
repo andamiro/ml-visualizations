@@ -4,57 +4,126 @@
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <title>편향 포함 퍼셉트론 시뮬레이터</title>
-<style>
 
-  *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+<style>
+  *, *::before, *::after {
+    box-sizing: border-box;
+    margin: 0;
+    padding: 0;
+  }
+
   body {
     font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
     background: #f8f7f4;
     color: #2c2c2a;
     padding: 1.5rem;
   }
-  h1 { font-size: 17px; font-weight: 500; margin-bottom: 1.25rem; }
+
+  h1 {
+    font-size: 17px;
+    font-weight: 500;
+    margin-bottom: 1.25rem;
+  }
+
   .controls {
     margin-bottom: 1.25rem;
     display: grid;
+    grid-template-columns: 1fr 1fr 1fr;
     gap: 12px;
   }
-  .ctrl-card { background: #eeece6; border-radius: 8px; padding: 12px 14px; }
+
+  .ctrl-card {
+    background: #eeece6;
+    border-radius: 8px;
+    padding: 12px 14px;
+  }
+
   .ctrl-label {
-    font-size: 12px; color: #5f5e5a;
-    display: flex; justify-content: space-between; align-items: baseline;
+    font-size: 12px;
+    color: #5f5e5a;
+    display: flex;
+    justify-content: space-between;
+    align-items: baseline;
     margin-bottom: 6px;
   }
-  .ctrl-label .name { font-weight: 500; font-size: 13px; color: #2c2c2a; }
-  .ctrl-label .val  { font-size: 13px; font-weight: 500; color: #185FA5; font-variant-numeric: tabular-nums; }
-  .ctrl-desc { font-size: 11px; color: #888780; margin-top: 6px; line-height: 1.4; }
-  input[type=range] { width: 100%; accent-color: #185FA5; }
-  .layout { display: grid; grid-template-columns: 1fr 1fr; gap: 16px; }
+
+  .ctrl-label .name {
+    font-weight: 500;
+    font-size: 13px;
+    color: #2c2c2a;
+  }
+
+  .ctrl-label .val {
+    font-size: 13px;
+    font-weight: 500;
+    color: #185FA5;
+    font-variant-numeric: tabular-nums;
+  }
+
+  .ctrl-desc {
+    font-size: 11px;
+    color: #888780;
+    margin-top: 6px;
+    line-height: 1.4;
+  }
+
+  input[type=range] {
+    width: 100%;
+    accent-color: #185FA5;
+  }
+
+  .layout {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 16px;
+  }
+
   .panel {
     background: #fff;
     border: 0.5px solid rgba(0,0,0,0.1);
     border-radius: 12px;
     padding: 14px;
   }
-  .panel-title { font-size: 13px; color: #5f5e5a; margin-bottom: 10px; }
-  canvas { display: block; width: 100% !important; }
+
+  .panel-title {
+    font-size: 13px;
+    color: #5f5e5a;
+    margin-bottom: 10px;
+  }
+
+  canvas {
+    display: block;
+    width: 100% !important;
+  }
+
   .insight {
     margin-top: 1rem;
     background: #eeece6;
     border-radius: 8px;
     padding: 12px 14px;
-    font-size: 13px; color: #5f5e5a; line-height: 1.6;
+    font-size: 13px;
+    color: #5f5e5a;
+    line-height: 1.6;
     min-height: 48px;
   }
-  .insight strong { color: #2c2c2a; font-weight: 500; }
-  @media (max-width: 560px) {
-    .layout { grid-template-columns: 1fr; }
-    .controls { grid-template-columns: 1fr; }
+
+  .insight strong {
+    color: #2c2c2a;
+    font-weight: 500;
   }
 
-.controls { grid-template-columns: 1fr 1fr 1fr; }
+  @media (max-width: 560px) {
+    .layout {
+      grid-template-columns: 1fr;
+    }
+
+    .controls {
+      grid-template-columns: 1fr;
+    }
+  }
 </style>
 </head>
+
 <body>
 
 <h1>결정 경계 시뮬레이터 — 편향을 추가한 퍼셉트론</h1>
@@ -68,6 +137,7 @@
     <input type="range" min="-2" max="2" step="0.01" value="0.5" id="w1-slider">
     <div class="ctrl-desc">광고성 단어 수에 대한 민감도 — 결정 경계의 기울기를 결정</div>
   </div>
+
   <div class="ctrl-card">
     <div class="ctrl-label">
       <span class="name">가중치 w₂</span>
@@ -76,6 +146,7 @@
     <input type="range" min="-2" max="2" step="0.01" value="-1.0" id="w2-slider">
     <div class="ctrl-desc">링크 개수에 대한 민감도 — 결정 경계의 기울기를 결정</div>
   </div>
+
   <div class="ctrl-card">
     <div class="ctrl-label">
       <span class="name">편향 b</span>
@@ -91,6 +162,7 @@
     <div class="panel-title">가중합 분포</div>
     <canvas id="cv-heat"></canvas>
   </div>
+
   <div class="panel">
     <div class="panel-title">분류 결과</div>
     <canvas id="cv-scatter"></canvas>
@@ -100,12 +172,11 @@
 <div class="insight" id="insight"></div>
 
 <script>
-
 const DATA = [
-  [0,1,0],[0.5,0,0],[1,0,0],[2,1,0],[3,0,0],[3,2,0],
-  [4,1,0],[5,2,0],[1,3,0],[2,2,0],
-  [8,5,1],[10,7,1],[12,6,1],[13,5,1],[14,8,1],[15,7,1],
-  [16,4,1],[17,9,1],[11,3,1],[19,6,1],
+  [0, 1, 0], [0.5, 0, 0], [1, 0, 0], [2, 1, 0], [3, 0, 0], [3, 2, 0],
+  [4, 1, 0], [5, 2, 0], [1, 3, 0], [2, 2, 0],
+  [8, 5, 1], [10, 7, 1], [12, 6, 1], [13, 5, 1], [14, 8, 1], [15, 7, 1],
+  [16, 4, 1], [17, 9, 1], [11, 3, 1], [19, 6, 1],
 ];
 
 const BLUE  = '#185FA5';
@@ -114,139 +185,293 @@ const RED   = '#A32D2D';
 const GRID  = 'rgba(0,0,0,0.06)';
 const AXIS  = 'rgba(0,0,0,0.15)';
 const TEXT  = '#888780';
-const XM = 21, YM = 11;
 
-// 양성: 파랑, 음성: 빨강 (배경 영역)
-const POS_BG  = [24,  95,  165, 30];   // 파랑, 낮은 불투명도
-const NEG_BG  = [163, 45,  45,  22];   // 빨강, 낮은 불투명도
-const POS_HM  = [24,  95,  165, 55];
-const NEG_HM  = [163, 45,  45,  40];
+const XM = 21;
+const YM = 11;
+
+const POS_BG = [24, 95, 165, 30];
+const NEG_BG = [163, 45, 45, 22];
+
+const POS_HM = [24, 95, 165, 55];
+const NEG_HM = [163, 45, 45, 40];
+
+let w1 = 0.5;
+let w2 = -1.0;
+let b = 0.0;
 
 function setupCanvas(canvas) {
   const dpr = window.devicePixelRatio || 1;
-  const W = canvas.parentElement.clientWidth - 28;
+  const W = Math.floor(canvas.parentElement.clientWidth - 28);
   const H = Math.round(W * 0.78);
-  canvas.width  = W * dpr;
-  canvas.height = H * dpr;
-  canvas.style.width  = W + 'px';
+
+  canvas.width = Math.round(W * dpr);
+  canvas.height = Math.round(H * dpr);
+
+  canvas.style.width = W + 'px';
   canvas.style.height = H + 'px';
+
   const ctx = canvas.getContext('2d');
-  ctx.scale(dpr, dpr);
-  return { ctx, W, H };
+
+  // resize나 update 반복 시 scale이 누적되지 않도록 setTransform 사용
+  ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+
+  return { ctx, W, H, dpr };
+}
+
+function z(x, y) {
+  return w1 * x + w2 * y + b;
 }
 
 function drawAxes(ctx, W, H, pad, toX, toY) {
-  ctx.strokeStyle = GRID; ctx.lineWidth = 0.5;
-  [0,5,10,15,20].forEach(x => {
-    ctx.beginPath(); ctx.moveTo(toX(x), pad); ctx.lineTo(toX(x), H-pad); ctx.stroke();
-  });
-  [0,2,4,6,8,10].forEach(y => {
-    ctx.beginPath(); ctx.moveTo(pad, toY(y)); ctx.lineTo(W-pad, toY(y)); ctx.stroke();
-  });
-  ctx.strokeStyle = AXIS; ctx.lineWidth = 1;
-  ctx.beginPath(); ctx.moveTo(pad, H-pad); ctx.lineTo(W-pad, H-pad); ctx.stroke();
-  ctx.beginPath(); ctx.moveTo(pad, pad);   ctx.lineTo(pad, H-pad);   ctx.stroke();
+  ctx.strokeStyle = GRID;
+  ctx.lineWidth = 0.5;
 
-  ctx.fillStyle = TEXT; ctx.font = '11px -apple-system,sans-serif'; ctx.textAlign = 'center';
-  [0,5,10,15,20].forEach(x => ctx.fillText(x, toX(x), H-pad+14));
-  ctx.textAlign = 'right';
-  [0,2,4,6,8,10].forEach(y => ctx.fillText(y, pad-5, toY(y)+4));
+  [0, 5, 10, 15, 20].forEach(x => {
+    ctx.beginPath();
+    ctx.moveTo(toX(x), pad);
+    ctx.lineTo(toX(x), H - pad);
+    ctx.stroke();
+  });
+
+  [0, 2, 4, 6, 8, 10].forEach(y => {
+    ctx.beginPath();
+    ctx.moveTo(pad, toY(y));
+    ctx.lineTo(W - pad, toY(y));
+    ctx.stroke();
+  });
+
+  ctx.strokeStyle = AXIS;
+  ctx.lineWidth = 1;
+
+  ctx.beginPath();
+  ctx.moveTo(pad, H - pad);
+  ctx.lineTo(W - pad, H - pad);
+  ctx.stroke();
+
+  ctx.beginPath();
+  ctx.moveTo(pad, pad);
+  ctx.lineTo(pad, H - pad);
+  ctx.stroke();
+
+  ctx.fillStyle = TEXT;
+  ctx.font = '11px -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif';
   ctx.textAlign = 'center';
-  ctx.fillText('x₁ (광고성 단어 개수)', (pad+W-pad)/2, H-2);
-  ctx.save(); ctx.translate(11, (pad+H-pad)/2); ctx.rotate(-Math.PI/2);
-  ctx.fillText('x₂ (링크 개수)', 0, 0); ctx.restore();
+
+  [0, 5, 10, 15, 20].forEach(x => {
+    ctx.fillText(x, toX(x), H - pad + 14);
+  });
+
+  ctx.textAlign = 'right';
+
+  [0, 2, 4, 6, 8, 10].forEach(y => {
+    ctx.fillText(y, pad - 5, toY(y) + 4);
+  });
+
+  ctx.textAlign = 'center';
+  ctx.fillText('x₁ (광고성 단어 개수)', (pad + W - pad) / 2, H - 2);
+
+  ctx.save();
+  ctx.translate(11, (pad + H - pad) / 2);
+  ctx.rotate(-Math.PI / 2);
+  ctx.fillText('x₂ (링크 개수)', 0, 0);
+  ctx.restore();
 }
 
-
-let w1 = 0.5, w2 = -1.0, b = 0.0;
-
-function z(x, y) { return w1*x + w2*y + b; }
-
 function drawBoundary(ctx, W, H, pad, toX, toY) {
-  if(Math.abs(w2) < 0.01) return;
-  ctx.strokeStyle = BLUE; ctx.lineWidth = 2.5;
+  ctx.save();
+
+  // 결정 경계선이 좌표평면 밖으로 튀어나가지 않도록 좌표평면 내부만 clip
   ctx.beginPath();
-  let first = true;
-  for(let xi = -1; xi <= XM+1; xi += 0.2) {
-    const yi = -(w1*xi + b) / w2;
-    const cx = toX(xi), cy = toY(yi);
-    if(first) { ctx.moveTo(cx, cy); first = false; } else ctx.lineTo(cx, cy);
+  ctx.rect(pad, pad, W - 2 * pad, H - 2 * pad);
+  ctx.clip();
+
+  // w1과 w2가 모두 0에 가까우면 결정 경계를 그릴 수 없음
+  if (Math.abs(w1) < 0.01 && Math.abs(w2) < 0.01) {
+    ctx.restore();
+    return;
   }
+
+  ctx.strokeStyle = BLUE;
+  ctx.lineWidth = 2.5;
+  ctx.beginPath();
+
+  if (Math.abs(w2) < 0.01) {
+    // w₂가 0이면 w₁x₁ + b = 0, 즉 x₁ = -b / w₁ 형태의 세로선
+    const x = -b / w1;
+    ctx.moveTo(toX(x), toY(0));
+    ctx.lineTo(toX(x), toY(YM));
+  } else {
+    let first = true;
+
+    for (let xi = -1; xi <= XM + 1; xi += 0.2) {
+      const yi = -(w1 * xi + b) / w2;
+      const cx = toX(xi);
+      const cy = toY(yi);
+
+      if (first) {
+        ctx.moveTo(cx, cy);
+        first = false;
+      } else {
+        ctx.lineTo(cx, cy);
+      }
+    }
+  }
+
   ctx.stroke();
+  ctx.restore();
 }
 
 function drawHeatmap(canvas) {
-  const { ctx, W, H } = setupCanvas(canvas);
+  const { ctx, W, H, dpr } = setupCanvas(canvas);
+
   const pad = 36;
-  const toX = v => pad + (v/XM)*(W-2*pad);
-  const toY = v => H-pad - (v/YM)*(H-2*pad);
-  ctx.clearRect(0,0,W,H);
-  const iw = W-2*pad, ih = H-2*pad;
+  const toX = v => pad + (v / XM) * (W - 2 * pad);
+  const toY = v => H - pad - (v / YM) * (H - 2 * pad);
+
+  ctx.clearRect(0, 0, W, H);
+
+  // 좌표평면 내부만 칠함
+  const iw = Math.round((W - 2 * pad) * dpr);
+  const ih = Math.round((H - 2 * pad) * dpr);
+
   const id = ctx.createImageData(iw, ih);
-  for(let px = 0; px < iw; px++) {
-    for(let py = 0; py < ih; py++) {
-      const x = px/iw*XM, y = (1-py/ih)*YM;
-      const col = z(x,y) >= 0 ? POS_HM : NEG_HM;
-      const i = (py*iw+px)*4;
-      id.data[i]=col[0]; id.data[i+1]=col[1]; id.data[i+2]=col[2]; id.data[i+3]=col[3];
+
+  for (let px = 0; px < iw; px++) {
+    for (let py = 0; py < ih; py++) {
+      const x = px / iw * XM;
+      const y = (1 - py / ih) * YM;
+
+      const col = z(x, y) >= 0 ? POS_HM : NEG_HM;
+      const i = (py * iw + px) * 4;
+
+      id.data[i] = col[0];
+      id.data[i + 1] = col[1];
+      id.data[i + 2] = col[2];
+      id.data[i + 3] = col[3];
     }
   }
-  ctx.putImageData(id, pad, pad);
+
+  // putImageData는 setTransform / scale의 영향을 받지 않으므로 dpr 기준 좌표 사용
+  ctx.putImageData(id, Math.round(pad * dpr), Math.round(pad * dpr));
+
   drawAxes(ctx, W, H, pad, toX, toY);
   drawBoundary(ctx, W, H, pad, toX, toY);
-  ctx.font = '11px sans-serif'; ctx.textAlign = 'left';
+
+  ctx.font = '11px sans-serif';
+  ctx.textAlign = 'left';
+
   ctx.fillStyle = 'rgba(24,95,165,0.8)';
-  ctx.fillText('파란 영역: z ≥ 0 (양성)', pad+6, pad+16);
+  ctx.fillText('파란 영역: z ≥ 0 (양성)', pad + 6, pad + 16);
+
   ctx.fillStyle = 'rgba(163,45,45,0.8)';
-  ctx.fillText('빨간 영역: z < 0 (음성)', pad+6, pad+30);
+  ctx.fillText('빨간 영역: z < 0 (음성)', pad + 6, pad + 30);
 }
 
 function drawScatter(canvas) {
-  const { ctx, W, H } = setupCanvas(canvas);
+  const { ctx, W, H, dpr } = setupCanvas(canvas);
+
   const pad = 36;
-  const toX = v => pad + (v/XM)*(W-2*pad);
-  const toY = v => H-pad - (v/YM)*(H-2*pad);
-  ctx.clearRect(0,0,W,H);
-  const id = ctx.createImageData(W, H);
-  for(let px = 0; px < W; px++) {
-    for(let py = 0; py < H; py++) {
-      const x=(px-pad)/(W-2*pad)*XM, y=(H-pad-py)/(H-2*pad)*YM;
-      const col = z(x,y) >= 0 ? POS_BG : NEG_BG;
-      const i=(py*W+px)*4;
-      id.data[i]=col[0]; id.data[i+1]=col[1]; id.data[i+2]=col[2]; id.data[i+3]=col[3];
+  const toX = v => pad + (v / XM) * (W - 2 * pad);
+  const toY = v => H - pad - (v / YM) * (H - 2 * pad);
+
+  ctx.clearRect(0, 0, W, H);
+
+  // 분류 결과 배경도 가중합 분포처럼 좌표평면 내부만 칠함
+  const iw = Math.round((W - 2 * pad) * dpr);
+  const ih = Math.round((H - 2 * pad) * dpr);
+
+  const id = ctx.createImageData(iw, ih);
+
+  for (let px = 0; px < iw; px++) {
+    for (let py = 0; py < ih; py++) {
+      const x = px / iw * XM;
+      const y = (1 - py / ih) * YM;
+
+      const col = z(x, y) >= 0 ? POS_BG : NEG_BG;
+      const i = (py * iw + px) * 4;
+
+      id.data[i] = col[0];
+      id.data[i + 1] = col[1];
+      id.data[i + 2] = col[2];
+      id.data[i + 3] = col[3];
     }
   }
-  ctx.putImageData(id, 0, 0);
+
+  // putImageData는 transform을 무시하므로 실제 캔버스 픽셀 좌표인 dpr 기준으로 삽입
+  ctx.putImageData(id, Math.round(pad * dpr), Math.round(pad * dpr));
+
   drawAxes(ctx, W, H, pad, toX, toY);
   drawBoundary(ctx, W, H, pad, toX, toY);
+
   DATA.forEach(([x, y, label]) => {
-    const ok = (z(x,y) >= 0 ? 1 : 0) === label;
-    const cx = toX(x), cy = toY(y);
-    if(!ok) {
-      ctx.beginPath(); ctx.arc(cx, cy, 11, 0, Math.PI*2);
-      ctx.fillStyle = 'rgba(180,100,0,0.13)'; ctx.fill();
+    const predicted = z(x, y) >= 0 ? 1 : 0;
+    const ok = predicted === label;
+
+    const cx = toX(x);
+    const cy = toY(y);
+
+    if (!ok) {
+      ctx.beginPath();
+      ctx.arc(cx, cy, 11, 0, Math.PI * 2);
+      ctx.fillStyle = 'rgba(180,100,0,0.13)';
+      ctx.fill();
     }
-    ctx.beginPath(); ctx.arc(cx, cy, 6.5, 0, Math.PI*2);
-    ctx.fillStyle   = label === 0 ? 'rgba(26,122,74,0.65)' : 'rgba(24,95,165,0.65)';
-    ctx.strokeStyle = ok ? (label === 0 ? GREEN : BLUE) : RED;
-    ctx.lineWidth = 2; ctx.fill(); ctx.stroke();
+
+    ctx.beginPath();
+    ctx.arc(cx, cy, 6.5, 0, Math.PI * 2);
+
+    ctx.fillStyle = label === 0
+      ? 'rgba(26,122,74,0.65)'
+      : 'rgba(24,95,165,0.65)';
+
+    ctx.strokeStyle = ok
+      ? (label === 0 ? GREEN : BLUE)
+      : RED;
+
+    ctx.lineWidth = 2;
+    ctx.fill();
+    ctx.stroke();
   });
 }
 
 function calcStats() {
-  let c = 0;
-  DATA.forEach(([x,y,l]) => { if((z(x,y)>=0?1:0)===l) c++; });
-  return { correct:c, wrong:DATA.length-c, acc:Math.round(c/DATA.length*100) };
+  let correct = 0;
+
+  DATA.forEach(([x, y, label]) => {
+    const predicted = z(x, y) >= 0 ? 1 : 0;
+    if (predicted === label) correct++;
+  });
+
+  return {
+    correct,
+    wrong: DATA.length - correct,
+    acc: Math.round(correct / DATA.length * 100)
+  };
 }
 
 function getInsight() {
   const { correct, wrong, acc } = calcStats();
+
   const eq = `${w1.toFixed(2)}·x₁ + (${w2.toFixed(2)})·x₂ + (${b.toFixed(2)}) = 0`;
-  if(wrong === 0)
-    return `<strong>정확도 ${acc}% (${correct}/${DATA.length})</strong> — 모든 샘플을 올바르게 분류합니다. &nbsp;<span style="color:#888780">결정 경계: ${eq}</span>`;
+
+  if (wrong === 0) {
+    return `
+      <strong>정확도 ${acc}% (${correct}/${DATA.length})</strong>
+      — 모든 샘플을 올바르게 분류합니다.
+      &nbsp;<span style="color:#888780">결정 경계: ${eq}</span>
+    `;
+  }
+
   const bNote = Math.abs(b) < 0.05
-    ? ` &nbsp;<span style="color:#185FA5">편향 b를 조정하면 경계를 이동할 수 있습니다.</span>` : '';
-  return `<strong>정확도 ${acc}% (${correct}/${DATA.length})</strong> — 오분류 <strong style="color:#A32D2D">${wrong}개</strong>.${bNote} &nbsp;<span style="color:#888780">결정 경계: ${eq}</span>`;
+    ? ` &nbsp;<span style="color:#185FA5">편향 b를 조정하면 경계를 이동할 수 있습니다.</span>`
+    : '';
+
+  return `
+    <strong>정확도 ${acc}% (${correct}/${DATA.length})</strong>
+    — 오분류 <strong style="color:#A32D2D">${wrong}개</strong>.
+    ${bNote}
+    &nbsp;<span style="color:#888780">결정 경계: ${eq}</span>
+  `;
 }
 
 function update() {
@@ -256,17 +481,27 @@ function update() {
 }
 
 document.getElementById('w1-slider').addEventListener('input', e => {
-  w1 = parseFloat(e.target.value); document.getElementById('w1-val').textContent = w1.toFixed(2); update();
+  w1 = parseFloat(e.target.value);
+  document.getElementById('w1-val').textContent = w1.toFixed(2);
+  update();
 });
+
 document.getElementById('w2-slider').addEventListener('input', e => {
-  w2 = parseFloat(e.target.value); document.getElementById('w2-val').textContent = w2.toFixed(2); update();
+  w2 = parseFloat(e.target.value);
+  document.getElementById('w2-val').textContent = w2.toFixed(2);
+  update();
 });
+
 document.getElementById('b-slider').addEventListener('input', e => {
-  b = parseFloat(e.target.value); document.getElementById('b-val').textContent = b.toFixed(2); update();
+  b = parseFloat(e.target.value);
+  document.getElementById('b-val').textContent = b.toFixed(2);
+  update();
 });
 
 update();
+
 window.addEventListener('resize', update);
 </script>
+
 </body>
 </html>
