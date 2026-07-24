@@ -1,0 +1,350 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+<meta charset="UTF-8">
+<title>미분값 시뮬레이터</title>
+<style>
+  :root{
+    --bg:#f7f7f5;
+    --panel:#ffffff;
+    --border:#e3e2de;
+    --ink:#1f1f1f;
+    --sub:#6b6b66;
+    --accent:#3b6ef0;
+    --tangent:#e8590c;
+    --pos:#2f9e44;
+    --neg:#e03131;
+    --zero:#868e96;
+    --grid:#eceae4;
+  }
+  *{box-sizing:border-box;}
+  body{
+    margin:0;
+    background:var(--bg);
+    color:var(--ink);
+    font-family:"Pretendard","Apple SD Gothic Neo","Malgun Gothic",-apple-system,sans-serif;
+    display:flex;
+    flex-direction:column;
+    align-items:center;
+    padding:20px 12px 40px;
+  }
+  .wrap{ width:100%; max-width:820px; }
+  h1{ font-size:16px; font-weight:700; margin:0 0 12px; letter-spacing:-0.2px; }
+  .board{
+    background:var(--panel);
+    border:1px solid var(--border);
+    border-radius:14px;
+    padding:14px;
+  }
+  canvas{
+    width:100%;
+    display:block;
+    border-radius:10px;
+    background:#fff;
+    touch-action:none;
+    cursor:grab;
+  }
+  .funcRow{ display:flex; gap:6px; margin:12px 0 12px; }
+  .funcBtn{
+    border:1px solid var(--border);
+    background:#fbfbfa;
+    padding:6px 12px;
+    border-radius:999px;
+    font-size:12.5px;
+    cursor:pointer;
+    color:var(--sub);
+    font-family:inherit;
+  }
+  .funcBtn.active{ background:var(--ink); color:#fff; border-color:var(--ink); }
+  .ctrlRow{ display:flex; align-items:center; gap:10px; margin-bottom:10px; }
+  .ctrlRow label{ font-size:12.5px; color:var(--sub); width:64px; flex-shrink:0; }
+  input[type=range]{ flex:1; accent-color:var(--accent); }
+  .val{ font-family:"SFMono-Regular",Consolas,monospace; font-size:12.5px; width:60px; text-align:right; }
+  .quotient{
+    font-family:"SFMono-Regular",Consolas,monospace;
+    font-size:13px;
+    background:#fafaf8;
+    border:1px solid var(--border);
+    border-radius:8px;
+    padding:10px 12px;
+    line-height:1.7;
+    margin-top:10px;
+    overflow-x:auto;
+    white-space:nowrap;
+  }
+  .slopeCard{ display:flex; align-items:baseline; gap:10px; margin-top:10px; flex-wrap:wrap; }
+  .slopeNum{ font-family:"SFMono-Regular",Consolas,monospace; font-size:21px; font-weight:700; }
+  .tag{ font-size:12px; padding:3px 10px; border-radius:999px; font-weight:600; }
+  .tag.pos{background:rgba(47,158,68,0.12);color:var(--pos);}
+  .tag.neg{background:rgba(224,49,49,0.12);color:var(--neg);}
+  .tag.zero{background:rgba(134,142,150,0.14);color:var(--zero);}
+  .legend{ display:flex; gap:16px; font-size:12px; color:var(--sub); margin-top:10px; }
+  .legend span{ display:inline-flex; align-items:center; gap:5px; }
+  .swatch{ width:16px; height:2px; display:inline-block; }
+</style>
+</head>
+<body>
+<div class="wrap">
+  <h1>미분값 시뮬레이터 — 평균변화율 vs 순간변화율</h1>
+
+  <div class="board">
+    <canvas id="cv" width="800" height="440"></canvas>
+
+    <div class="funcRow" id="funcRow"></div>
+
+    <div class="ctrlRow">
+      <label>x₀</label>
+      <input type="range" id="x0Slider" min="-400" max="400" value="0" step="1">
+      <span class="val" id="x0Val">0.00</span>
+    </div>
+    <div class="ctrlRow">
+      <label>Δx</label>
+      <input type="range" id="dxSlider" min="1" max="300" value="150" step="1">
+      <span class="val" id="dxVal">1.500</span>
+    </div>
+
+    <div class="quotient" id="quotientText"></div>
+
+    <div class="slopeCard">
+      <span style="font-size:12.5px;color:var(--sub);">두 점을 지나는 직선의 기울기</span>
+      <span class="slopeNum" id="secantSlope">-</span>
+      <span class="tag" id="secantTag">-</span>
+    </div>
+    <div class="slopeCard">
+      <span style="font-size:12.5px;color:var(--sub);">f′(x₀) (접선 기울기)</span>
+      <span class="slopeNum" id="trueSlope" style="color:var(--tangent);">-</span>
+      <span class="tag" id="trueTag">-</span>
+    </div>
+
+    <div class="legend">
+      <span><span class="swatch" style="background:var(--accent);"></span>파란 직선 (평균변화율)</span>
+      <span><span class="swatch" style="background:var(--tangent);border-top:2px dashed var(--tangent);"></span>접선 (순간변화율)</span>
+    </div>
+  </div>
+</div>
+
+<script>
+const canvas = document.getElementById('cv');
+const ctx = canvas.getContext('2d');
+const W = canvas.width, H = canvas.height;
+
+const FUNCS = [
+  { key:'quad',  label:'f(x) = x²',      f:x=>x*x,        df:x=>2*x,      xr:[-3.2,3.2], yr:[-1,9] },
+  { key:'cubic', label:'f(x) = x³ − 3x', f:x=>x*x*x-3*x,  df:x=>3*x*x-3,  xr:[-2.6,2.6], yr:[-4,4] },
+  { key:'sin',   label:'f(x) = sin(x)',  f:x=>Math.sin(x),df:x=>Math.cos(x), xr:[-6.4,6.4], yr:[-1.6,1.6] },
+];
+let cur = FUNCS[0];
+
+let x0 = 0.6;
+let dxMag = 1.5;
+let dragging = false;
+
+function worldToScreen(x, y){
+  const [x1,x2] = cur.xr, [y1,y2] = cur.yr;
+  const px = (x - x1) / (x2 - x1) * (W - 80) + 50;
+  const py = H - 40 - (y - y1) / (y2 - y1) * (H - 80);
+  return [px, py];
+}
+
+function getCSS(v){ return getComputedStyle(document.documentElement).getPropertyValue(v).trim(); }
+
+function niceStep(range){
+  const raw = range/8;
+  const mag = Math.pow(10, Math.floor(Math.log10(raw)));
+  const norm = raw/mag;
+  let step;
+  if(norm < 1.5) step = 1; else if(norm < 3.5) step = 2; else if(norm < 7.5) step = 5; else step = 10;
+  return step*mag;
+}
+
+function drawGrid(){
+  ctx.clearRect(0,0,W,H);
+  ctx.strokeStyle = getCSS('--grid');
+  ctx.lineWidth = 1;
+  const [x1,x2] = cur.xr, [y1,y2] = cur.yr;
+  const stepX = niceStep(x2-x1), stepY = niceStep(y2-y1);
+  for(let gx = Math.ceil(x1/stepX)*stepX; gx <= x2; gx += stepX){
+    const [px] = worldToScreen(gx,0);
+    ctx.beginPath(); ctx.moveTo(px,20); ctx.lineTo(px,H-40); ctx.stroke();
+  }
+  for(let gy = Math.ceil(y1/stepY)*stepY; gy <= y2; gy += stepY){
+    const [,py] = worldToScreen(0,gy);
+    ctx.beginPath(); ctx.moveTo(50,py); ctx.lineTo(W-30,py); ctx.stroke();
+  }
+  ctx.strokeStyle = '#c9c8c2';
+  ctx.lineWidth = 1.5;
+  if(y1<0 && y2>0){
+    const [,py0] = worldToScreen(0,0);
+    ctx.beginPath(); ctx.moveTo(50,py0); ctx.lineTo(W-30,py0); ctx.stroke();
+  }
+  if(x1<0 && x2>0){
+    const [px0] = worldToScreen(0,0);
+    ctx.beginPath(); ctx.moveTo(px0,20); ctx.lineTo(px0,H-40); ctx.stroke();
+  }
+}
+
+function drawCurve(){
+  const [x1,x2] = cur.xr;
+  ctx.strokeStyle = '#2b2b2b';
+  ctx.lineWidth = 2;
+  ctx.beginPath();
+  let started=false;
+  const N=400;
+  for(let i=0;i<=N;i++){
+    const x = x1 + (x2-x1)*i/N;
+    const y = cur.f(x);
+    const [px,py] = worldToScreen(x,y);
+    if(!started){ ctx.moveTo(px,py); started=true; } else ctx.lineTo(px,py);
+  }
+  ctx.stroke();
+}
+
+function drawPoint(x,y,color,r=5){
+  const [px,py] = worldToScreen(x,y);
+  ctx.beginPath(); ctx.arc(px,py,r,0,Math.PI*2);
+  ctx.fillStyle = color; ctx.fill();
+  ctx.strokeStyle = '#fff'; ctx.lineWidth = 1.5; ctx.stroke();
+}
+
+function drawLineThroughSlope(x, y, slope, color, dashed){
+  const [x1,x2] = cur.xr;
+  const xa = x1, xb = x2;
+  const ya = y + slope*(xa-x), yb = y + slope*(xb-x);
+  const [pxa,pya] = worldToScreen(xa,ya);
+  const [pxb,pyb] = worldToScreen(xb,yb);
+  ctx.save();
+  if(dashed) ctx.setLineDash([7,5]);
+  ctx.strokeStyle = color;
+  ctx.lineWidth = 2.5;
+  ctx.beginPath(); ctx.moveTo(pxa,pya); ctx.lineTo(pxb,pyb); ctx.stroke();
+  ctx.restore();
+}
+
+function tagFor(val){
+  if(Math.abs(val) < 0.005) return ['zero','≈ 0 (수평)'];
+  if(val > 0) return ['pos','증가 방향'];
+  return ['neg','감소 방향'];
+}
+
+function render(){
+  drawGrid();
+  drawCurve();
+
+  const xa = x0, xb = x0 + dxMag;
+  const ya = cur.f(xa), yb = cur.f(xb);
+  const secantSlope = (yb-ya)/(xb-xa);
+  const trueSlope = cur.df(x0);
+
+  const [pxa,pya] = worldToScreen(xa,ya);
+  const [pxb,pyb] = worldToScreen(xb,yb);
+  ctx.save();
+  ctx.setLineDash([4,4]);
+  ctx.strokeStyle = '#c2c1bb';
+  ctx.lineWidth = 1;
+  ctx.beginPath();
+  ctx.moveTo(pxa,pya); ctx.lineTo(pxb,pya); ctx.lineTo(pxb,pyb);
+  ctx.stroke();
+  ctx.restore();
+
+  drawLineThroughSlope(x0, cur.f(x0), trueSlope, getCSS('--tangent'), true);
+  drawLineThroughSlope(xa, ya, secantSlope, getCSS('--accent'), false);
+
+  drawPoint(xa, ya, '#1f1f1f', 6);
+  drawPoint(xb, yb, getCSS('--accent'), 5);
+
+  ctx.fillStyle = '#1f1f1f';
+  ctx.font = '12px monospace';
+  ctx.fillText(`x₀=${xa.toFixed(2)}`, pxa+8, pya-10);
+  ctx.fillStyle = getCSS('--accent');
+  ctx.fillText(`x₀+Δx=${xb.toFixed(2)}`, pxb+8, pyb+16);
+
+  document.getElementById('quotientText').textContent =
+    `[ f(${xb.toFixed(3)}) − f(${xa.toFixed(3)}) ] / [ ${xb.toFixed(3)} − ${xa.toFixed(3)} ] = `+
+    `( ${yb.toFixed(3)} − ${ya.toFixed(3)} ) / ${(xb-xa).toFixed(3)} = ${secantSlope.toFixed(4)}`;
+
+  document.getElementById('secantSlope').textContent = secantSlope.toFixed(4);
+  document.getElementById('trueSlope').textContent = trueSlope.toFixed(4);
+  const [scls, stxt] = tagFor(secantSlope);
+  const [tcls, ttxt] = tagFor(trueSlope);
+  const st = document.getElementById('secantTag'); st.className='tag '+scls; st.textContent=stxt;
+  const tt = document.getElementById('trueTag'); tt.className='tag '+tcls; tt.textContent=ttxt;
+}
+
+// 슬라이더 매핑
+function x0FromSlider(v){ const [x1,x2]=cur.xr; return x1 + (x2-x1)*(v+400)/800; }
+function sliderFromX0(x){ const [x1,x2]=cur.xr; return Math.round(((x-x1)/(x2-x1))*800-400); }
+function dxFromSlider(v){ return v/100; }         // 0.01 ~ 3.00
+function sliderFromDx(dx){ return Math.round(dx*100); }
+
+const x0Slider = document.getElementById('x0Slider');
+const dxSlider = document.getElementById('dxSlider');
+const x0Val = document.getElementById('x0Val');
+const dxVal = document.getElementById('dxVal');
+
+function clampX0(){
+  const [x1,x2] = cur.xr;
+  const margin = (x2-x1)*0.06;
+  if(x0 < x1+margin) x0 = x1+margin;
+  if(x0 > x2-margin) x0 = x2-margin;
+}
+
+x0Slider.addEventListener('input', ()=>{
+  x0 = x0FromSlider(+x0Slider.value);
+  clampX0();
+  x0Val.textContent = x0.toFixed(2);
+  render();
+});
+dxSlider.addEventListener('input', ()=>{
+  dxMag = dxFromSlider(+dxSlider.value);
+  dxVal.textContent = dxMag.toFixed(3);
+  render();
+});
+
+const funcRow = document.getElementById('funcRow');
+FUNCS.forEach(fn=>{
+  const b = document.createElement('button');
+  b.className = 'funcBtn' + (fn.key===cur.key ? ' active' : '');
+  b.textContent = fn.label;
+  b.addEventListener('click', ()=>{
+    cur = fn;
+    [...funcRow.children].forEach(c=>c.classList.remove('active'));
+    b.classList.add('active');
+    clampX0();
+    render();
+  });
+  funcRow.appendChild(b);
+});
+
+// 그래프 위 점 드래그
+function screenToWorldX(px){ const [x1,x2]=cur.xr; return x1 + (px-50)/(W-80)*(x2-x1); }
+function getCanvasCoords(evt){
+  const rect = canvas.getBoundingClientRect();
+  const scaleX = W/rect.width;
+  const clientX = evt.touches ? evt.touches[0].clientX : evt.clientX;
+  return (clientX-rect.left)*scaleX;
+}
+canvas.addEventListener('mousedown', e=>{ dragging=true; canvas.style.cursor='grabbing'; onDrag(e); });
+window.addEventListener('mousemove', e=>{ if(dragging) onDrag(e); });
+window.addEventListener('mouseup', ()=>{ dragging=false; canvas.style.cursor='grab'; });
+canvas.addEventListener('touchstart', e=>{ dragging=true; onDrag(e); }, {passive:true});
+canvas.addEventListener('touchmove', e=>{ if(dragging) onDrag(e); }, {passive:true});
+canvas.addEventListener('touchend', ()=>{ dragging=false; });
+
+function onDrag(e){
+  const px = getCanvasCoords(e);
+  x0 = screenToWorldX(px);
+  clampX0();
+  x0Slider.value = sliderFromX0(x0);
+  x0Val.textContent = x0.toFixed(2);
+  render();
+}
+
+// 초기화
+x0Slider.value = sliderFromX0(x0);
+dxSlider.value = sliderFromDx(dxMag);
+x0Val.textContent = x0.toFixed(2);
+dxVal.textContent = dxMag.toFixed(3);
+render();
+</script>
+</body>
+</html>
